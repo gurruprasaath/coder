@@ -104,11 +104,21 @@ def get_dynamic_table(db: Session, table_name: str) -> Table:
     return dynamic_metadata.tables[table_name]
 
 
-def validate_payload(table: Table, payload: dict):
+def validate_payload(table: Table, payload: dict, is_update: bool = False):
     valid_cols = [c.name for c in table.columns]
     bad = [k for k in payload if k not in valid_cols]
     if bad:
         raise HTTPException(status_code=400, detail=f"Invalid fields for '{table.name}': {bad}")
+        
+    if not is_update:
+        missing = []
+        for c in table.columns:
+            # If column is required, not a PK, has no default, and isn't our internal app_id
+            if not c.nullable and not c.primary_key and c.default is None and c.server_default is None:
+                if c.name not in payload and c.name != "app_id":
+                    missing.append(c.name)
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing required fields for '{table.name}': {missing}")
 
 
 @router.post("/data/{table_name}")
@@ -153,7 +163,7 @@ async def dynamic_update(table_name: str, id: int, request: Request, db: Session
 
     table   = get_dynamic_table(db, table_name)
     payload = await request.json()
-    validate_payload(table, payload)
+    validate_payload(table, payload, is_update=True)
 
     if "id" not in [c.name for c in table.columns]:
         raise HTTPException(status_code=400, detail=f"No 'id' column in {table_name}.")

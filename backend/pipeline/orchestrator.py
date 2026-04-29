@@ -68,9 +68,9 @@ def run_pipeline(prompt: str) -> dict:
         log_step("Structural Validation", (time.time() - start) * 1000,
                  f"Valid: {validation['is_valid']}")
 
-        # ── Stage 5: Repair Loop (max 2 cycles) ───────────────────────────────
+        # ── Stage 5: Repair Loop (max 10 cycles) ───────────────────────────────
         repair_count = 0
-        max_repairs  = 2
+        max_repairs  = 10
 
         while not validation.get("is_valid") and repair_count < max_repairs:
             repair_count += 1
@@ -85,36 +85,61 @@ def run_pipeline(prompt: str) -> dict:
             log_step(f"Validation (Post-Repair {repair_count})",
                      (time.time() - start) * 1000, f"Valid: {validation['is_valid']}")
 
-        # ── Stage 6: Pre-Execution Evaluation ─────────────────────────────────
+        # ── Stage 6: Pre-Execution Evaluation & Functional Loop ────────────────
         start      = time.time()
         evaluation = evaluate(schema)
         log_step("Pre-Execution Evaluation", (time.time() - start) * 1000,
                  f"Score: {evaluation['score']} | Status: {evaluation['status']}")
 
-        # If NOT_READY, run one final evaluator-driven repair
-        if not evaluation["ready"] and evaluation["errors"] and repair_count < max_repairs:
-            logger.warning(f"Evaluation NOT_READY (score={evaluation['score']}). "
-                           "Running final evaluator-driven repair.")
+        # Loop to enforce perfect execution score (100) based on functional simulation
+        eval_repair_count = 0
+        max_eval_repairs = 10
+        stalled_count = 0
+        previous_score = evaluation.get("score", 0)
+        
+        while not evaluation.get("ready") and eval_repair_count < max_eval_repairs:
+            eval_repair_count += 1
+            logger.warning(f"Evaluation Score {previous_score}/100. "
+                           f"Running Functional Perfection Repair {eval_repair_count}/{max_eval_repairs}.")
+            
+            # Re-run structural validation just to fetch any new EXECUTION_ERRORs we added
+            # The evaluator uses validator outputs in part.
+            val_check = validate_schema(schema)
+            errors_to_fix = evaluation.get("errors", []) + val_check.get("errors", [])
+            
             start  = time.time()
-            schema = repair_schema(schema, evaluation["errors"])
-            log_step("Final Repair (Evaluator-driven)", (time.time() - start) * 1000)
+            schema = repair_schema(schema, errors_to_fix)
+            log_step(f"Functional Repair {eval_repair_count}", (time.time() - start) * 1000)
 
             start      = time.time()
             evaluation = evaluate(schema)
-            log_step("Re-Evaluation (Post Final Repair)", (time.time() - start) * 1000,
-                     f"Score: {evaluation['score']} | Status: {evaluation['status']}")
+            current_score = evaluation.get("score", 0)
+            log_step(f"Re-Evaluation {eval_repair_count}", (time.time() - start) * 1000,
+                     f"Score: {current_score} | Status: {evaluation['status']}")
+                     
+            if current_score <= previous_score:
+                stalled_count += 1
+            else:
+                stalled_count = 0
+                
+            if stalled_count >= 2:
+                logger.warning("Score has stalled for 2 consecutive iterations. Breaking early to save tokens.")
+                log_step("Smart Early-Exit", 0, "Score stalled.")
+                break
+                
+            previous_score = current_score
 
         # ── Stage 7: DB Auto-Creation ──────────────────────────────────────────
-        if evaluation["ready"]:
-            try:
-                start = time.time()
-                from schema_interpreter import interpret_and_create_tables
-                interpret_and_create_tables(schema.get("db", {}))
-                log_step("Database Schema Auto-Creation", (time.time() - start) * 1000)
-            except Exception as e:
-                logger.error(f"DB auto-creation failed: {e}")
-        else:
-            logger.warning("Skipping DB creation — evaluation did not pass the threshold.")
+        # Always try to create DB tables so the frontend preview doesn't crash with 404s
+        try:
+            start = time.time()
+            from schema_interpreter import interpret_and_create_tables
+            interpret_and_create_tables(schema.get("db", {}))
+            log_step("Database Schema Auto-Creation", (time.time() - start) * 1000)
+            if not evaluation.get("ready", False):
+                logger.warning("DB tables created, but evaluation indicates app is NOT_READY. Some routes may fail.")
+        except Exception as e:
+            logger.error(f"DB auto-creation failed: {e}")
 
         return {
             "config":     schema,

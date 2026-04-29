@@ -1,16 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import FormRenderer from './FormRenderer';
 import TableRenderer from './TableRenderer';
+import ButtonRenderer from './ButtonRenderer';
 import { isEndpointAllowed } from '../utils/auth';
 
 export default function Renderer({ config, currentRole, setCurrentRole, runtimeId }) {
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [lastAction, setLastAction] = useState('None');
-
-  // Reset to first page when a new config is received or role changes
-  useEffect(() => {
-    setCurrentPageIndex(0);
-  }, [config, currentRole]);
 
   if (!config) {
     return (
@@ -33,113 +29,136 @@ export default function Renderer({ config, currentRole, setCurrentRole, runtimeI
   });
 
   return (
-    <div className="renderer-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', padding: '16px', position: 'relative' }}>
+    <div className="renderer-container" style={{ display: 'flex', minHeight: '100%', position: 'relative', backgroundColor: '#1a1d27', color: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #2a2e3d' }}>
       
-      {/* Debug Panel */}
-      <div style={{
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        color: '#00ff00',
-        padding: '8px 12px',
-        fontSize: '0.75rem',
-        borderRadius: '6px',
-        border: '1px solid #333',
-        fontFamily: 'monospace',
-        zIndex: 1000,
-        pointerEvents: 'none'
-      }}>
-        <div style={{ marginBottom: '2px' }}><strong style={{ color: '#aaa' }}>ROLE:</strong> {currentRole}</div>
-        <div style={{ marginBottom: '2px' }}><strong style={{ color: '#aaa' }}>PAGE:</strong> {visiblePages[currentPageIndex]?.name || 'None'}</div>
-        <div><strong style={{ color: '#aaa' }}>LAST API:</strong> {lastAction}</div>
-      </div>
-
-      {/* Role Switcher */}
-      <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '10px 20px', backgroundColor: '#121212', borderBottom: '1px solid #2a2e3d' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <label style={{ color: '#a6accd', fontSize: '0.9rem' }}>Viewing as Role:</label>
-          <select 
-            value={currentRole} 
-            onChange={(e) => {
-              setCurrentRole(e.target.value);
-              if (runtimeId) localStorage.setItem(`role_${runtimeId}`, e.target.value);
-            }}
-            style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#242936', color: '#fff', border: '1px solid #3b4252' }}
-          >
-            <option value="Admin">Admin</option>
-            <option value="User">User</option>
-            <option value="Public">Public</option>
-          </select>
+      {/* Sidebar Navigation */}
+      <aside style={{ width: '250px', backgroundColor: '#121212', borderRight: '1px solid #2a2e3d', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '20px', borderBottom: '1px solid #2a2e3d' }}>
+          <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#646cff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.5rem' }}>⬡</span>
+            Acme Corp App
+          </h2>
         </div>
-      </div>
+        <nav style={{ display: 'flex', flexDirection: 'column', padding: '15px 10px', gap: '5px' }}>
+          {visiblePages.length === 0 ? (
+            <div style={{ color: '#666', fontStyle: 'italic', padding: '10px' }}>No accessible pages</div>
+          ) : (
+            visiblePages.map((page, index) => {
+              // Ensure route has a leading slash
+              const path = page.route?.startsWith('/') ? page.route : `/${page.route}`;
+              return (
+                <NavLink
+                  key={index}
+                  to={path}
+                  style={({ isActive }) => ({
+                    padding: '12px 15px',
+                    borderRadius: '6px',
+                    textDecoration: 'none',
+                    color: isActive ? '#fff' : '#a6accd',
+                    backgroundColor: isActive ? '#646cff' : 'transparent',
+                    fontWeight: isActive ? 'bold' : 'normal',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  })}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <span style={{ opacity: isActive ? 1 : 0.5 }}>{index % 2 === 0 ? '📄' : '📊'}</span>
+                      {page.name}
+                    </>
+                  )}
+                </NavLink>
+              )
+            })
+          )}
+        </nav>
+      </aside>
 
-      {/* Navigation Tabs */}
-      <nav style={{ display: 'flex', gap: '10px', padding: '15px 20px', borderBottom: '1px solid #2a2e3d', backgroundColor: '#1a1d27', flexWrap: 'wrap' }}>
-        {visiblePages.length === 0 ? (
-          <div style={{ color: '#666', fontStyle: 'italic' }}>No accessible pages</div>
-        ) : (
-          visiblePages.map((page, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentPageIndex(index)}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '4px',
-                border: 'none',
-                backgroundColor: index === currentPageIndex ? '#646cff' : '#242936',
-                color: index === currentPageIndex ? '#fff' : '#a6accd',
-                cursor: 'pointer',
-                fontWeight: index === currentPageIndex ? 'bold' : 'normal',
-                transition: 'background-color 0.2s'
+      {/* Main Content Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto' }}>
+        
+        {/* Topbar */}
+        <header style={{ padding: '15px 25px', backgroundColor: '#1e212b', borderBottom: '1px solid #2a2e3d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <label style={{ color: '#a6accd', fontSize: '0.9rem', fontWeight: 'bold' }}>Role Context:</label>
+            <select 
+              value={currentRole} 
+              onChange={(e) => {
+                setCurrentRole(e.target.value);
+                if (runtimeId) localStorage.setItem(`role_${runtimeId}`, e.target.value);
               }}
+              style={{ padding: '8px 12px', borderRadius: '4px', backgroundColor: '#242936', color: '#fff', border: '1px solid #3b4252', outline: 'none', cursor: 'pointer' }}
             >
-              {page.name}
-            </button>
-          ))
-        )}
-      </nav>
+              <option value="Admin">Admin</option>
+              <option value="User">User</option>
+              <option value="Public">Public</option>
+            </select>
+          </div>
 
-      {/* Current Page Content */}
-      <div className="page-content" style={{ padding: '20px 0', flex: 1 }}>
-        {visiblePages.length > 0 && visiblePages[currentPageIndex] && (
-          <>
-            <h2 style={{ marginBottom: '20px', color: '#fff', fontSize: '1.4rem' }}>
-              {visiblePages[currentPageIndex].name}
-            </h2>
-            
-            <div className="components-list" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {visiblePages[currentPageIndex].components
-                ?.map((comp, cIndex) => {
-                  const isAllowed = isEndpointAllowed(comp.endpoint_ref, currentRole, config.auth?.rules || []);
-                  
-                  if (!isAllowed) {
-                    return (
-                      <div key={cIndex} style={{ padding: '20px', border: '1px dashed #f44336', margin: '15px 0', borderRadius: '8px', backgroundColor: 'rgba(244, 67, 54, 0.05)', color: '#f44336', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <h3 style={{ marginBottom: '5px' }}>{comp.name}</h3>
-                          <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>Access Denied: You do not have permission to view this component.</span>
-                        </div>
-                        <span style={{ fontSize: '1.5rem', opacity: 0.8 }}>🔒</span>
-                      </div>
-                    );
-                  }
+          <div style={{ fontSize: '0.85rem', color: '#a6accd', fontFamily: 'monospace', backgroundColor: 'rgba(0,0,0,0.3)', padding: '6px 12px', borderRadius: '4px', border: '1px solid #2a2e3d' }}>
+            LAST API: <span style={{ color: '#00ff00' }}>{lastAction}</span>
+          </div>
+        </header>
 
-                  if (comp.type === 'form') {
-                    return <FormRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onRoleChange={setCurrentRole} onAction={setLastAction} />;
-                  }
-                  if (comp.type === 'table') {
-                    return <TableRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onAction={setLastAction} />;
-                  }
-                  return (
-                    <div key={cIndex} style={{ padding: '10px', border: '1px dashed #444', margin: '10px 0', borderRadius: '4px', backgroundColor: '#242936' }}>
-                      <strong>{comp.type}:</strong> {comp.name}
+        {/* Page Content Area via Routing */}
+        <main style={{ padding: '30px', flex: 1 }}>
+          <Routes>
+            {visiblePages.map((page, index) => {
+              const path = page.route?.startsWith('/') ? page.route : `/${page.route}`;
+              return (
+                <Route key={index} path={path} element={
+                  <div className="page-content animation-fade-in">
+                    <h2 style={{ marginBottom: '25px', color: '#fff', fontSize: '1.8rem', borderBottom: '1px solid #2a2e3d', paddingBottom: '15px' }}>
+                      {page.name}
+                    </h2>
+                    
+                    <div className="components-list" style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+                      {page.components?.map((comp, cIndex) => {
+                        const isAllowed = isEndpointAllowed(comp.endpoint_ref, currentRole, config.auth?.rules || []);
+                        
+                        if (!isAllowed) {
+                          return (
+                            <div key={cIndex} style={{ padding: '20px', border: '1px dashed #f44336', borderRadius: '8px', backgroundColor: 'rgba(244, 67, 54, 0.05)', color: '#f44336', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <h3 style={{ marginBottom: '5px' }}>{comp.name}</h3>
+                                <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>Access Denied: You do not have permission to view this component.</span>
+                              </div>
+                              <span style={{ fontSize: '1.5rem', opacity: 0.8 }}>🔒</span>
+                            </div>
+                          );
+                        }
+
+                        if (comp.type === 'form') {
+                          return <FormRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onRoleChange={setCurrentRole} onAction={setLastAction} />;
+                        }
+                        if (comp.type === 'table') {
+                          return <TableRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onAction={setLastAction} />;
+                        }
+                        if (comp.type === 'button') {
+                          return <ButtonRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onAction={setLastAction} />;
+                        }
+                        return (
+                          <div key={cIndex} style={{ padding: '10px', border: '1px dashed #444', margin: '10px 0', borderRadius: '4px', backgroundColor: '#242936' }}>
+                            <strong>{comp.type}:</strong> {comp.name}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-            </div>
-          </>
-        )}
+                  </div>
+                } />
+              )
+            })}
+            
+            {/* Fallback route - automatically redirect to the first available page if route is not found */}
+            {visiblePages.length > 0 && (
+              <Route path="*" element={
+                <Navigate to={visiblePages[0].route?.startsWith('/') ? visiblePages[0].route : `/${visiblePages[0].route}`} replace />
+              } />
+            )}
+          </Routes>
+        </main>
       </div>
     </div>
   );

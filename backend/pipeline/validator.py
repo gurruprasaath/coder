@@ -117,28 +117,90 @@ def validate_schema(config: dict) -> dict:
         for c_idx, comp in enumerate(page.get('components', [])):
             ep_ref = comp.get('endpoint_ref')
             comp_name = comp.get('name', 'unknown')
+            comp_type = comp.get('type', 'unknown').lower()
             
             if ep_ref not in endpoint_ids:
                 errors.append({
-                    "type": "UI_API_MISMATCH",
+                    "type": "EXECUTION_ERROR",
                     "message": f"UI component '{comp_name}' references unknown endpoint ID '{ep_ref}'.",
                     "path": f"ui.pages[{p_idx}].components[{c_idx}].endpoint_ref"
                 })
                 continue
                 
-            # Cross-verify fields with the related table of the endpoint
             ep_obj = next((e for e in api_endpoints if e.get('id') == ep_ref), None)
-            if ep_obj:
+            if not ep_obj: continue
+
+            # Functional Simulation: Auth Access
+            has_auth = False
+            for rule in auth_rules:
+                if rule.get('role', '').lower() == (access_role or '').lower() and ep_ref in rule.get('allowed_endpoints', []):
+                    has_auth = True
+                    break
+            
+            if not has_auth and access_role:
+                errors.append({
+                    "type": "EXECUTION_ERROR",
+                    "message": f"Security Violation: Page role '{access_role}' lacks permission to access component endpoint '{ep_ref}'.",
+                    "path": f"ui.pages[{p_idx}].components[{c_idx}].endpoint_ref"
+                })
+
+            # Functional Simulation: Component Logic
+            if comp_type == 'form':
+                req_fields = [f.get('name') for f in ep_obj.get('request_body', [])]
+                comp_fields = comp.get('fields', [])
+                
+                for field in comp_fields:
+                    if field not in req_fields:
+                        errors.append({
+                            "type": "EXECUTION_ERROR",
+                            "message": f"Form '{comp_name}' submits field '{field}' not expected by endpoint '{ep_ref}' request_body.",
+                            "path": f"ui.pages[{p_idx}].components[{c_idx}].fields"
+                        })
+                
                 related_table = ep_obj.get('related_table')
                 if related_table in table_fields:
                     valid_fields = table_fields[related_table]
-                    for f_idx, field in enumerate(comp.get('fields', [])):
+                    for field in comp_fields:
                         if field not in valid_fields:
                             errors.append({
-                                "type": "UI_DB_MISMATCH",
-                                "message": f"UI component '{comp_name}' field '{field}' not found in table '{related_table}'.",
-                                "path": f"ui.pages[{p_idx}].components[{c_idx}].fields[{f_idx}]"
+                                "type": "EXECUTION_ERROR",
+                                "message": f"Form '{comp_name}' field '{field}' not found in DB table '{related_table}'.",
+                                "path": f"ui.pages[{p_idx}].components[{c_idx}].fields"
                             })
+                            
+            elif comp_type == 'table':
+                if ep_obj.get('method', '').upper() != 'GET':
+                    errors.append({
+                        "type": "EXECUTION_ERROR",
+                        "message": f"Table '{comp_name}' must use a GET endpoint to fetch data arrays.",
+                        "path": f"ui.pages[{p_idx}].components[{c_idx}].endpoint_ref"
+                    })
+                    
+                res_fields = [f.get('name') for f in ep_obj.get('response_body', [])]
+                comp_fields = comp.get('fields', [])
+                for field in comp_fields:
+                    if field not in res_fields:
+                        errors.append({
+                            "type": "EXECUTION_ERROR",
+                            "message": f"Table '{comp_name}' expects field '{field}' but endpoint '{ep_ref}' does not return it.",
+                            "path": f"ui.pages[{p_idx}].components[{c_idx}].fields"
+                        })
+
+            elif comp_type == 'button':
+                if ep_obj.get('method', '').upper() == 'GET':
+                    errors.append({
+                        "type": "EXECUTION_ERROR",
+                        "message": f"Button '{comp_name}' triggers GET endpoint '{ep_ref}', which is for reading data, not actions.",
+                        "path": f"ui.pages[{p_idx}].components[{c_idx}].endpoint_ref"
+                    })
+                
+                req_fields = [f.get('name') for f in ep_obj.get('request_body', [])]
+                if len(req_fields) > 0 and ep_obj.get('method', '').upper() != 'DELETE': 
+                    errors.append({
+                        "type": "EXECUTION_ERROR",
+                        "message": f"Button '{comp_name}' triggers endpoint '{ep_ref}' which requires input fields {req_fields}. Use a 'form' instead.",
+                        "path": f"ui.pages[{p_idx}].components[{c_idx}].endpoint_ref"
+                    })
 
     # 4. Auth Cross-Layer Checks
     for r_idx, rule in enumerate(auth_rules):
@@ -234,6 +296,98 @@ def validate_schema(config: dict) -> dict:
                     "message": f"Login endpoint '{ep_id}' request_body MUST contain a password or secret.",
                     "path": f"api.endpoints[{idx}].request_body"
                 })
+
+    # 6. Completeness Constraints
+    
+    # Auth Completeness
+    if len(auth_roles) < 1:
+        errors.append({
+            "type": "MISSING_ROLE",
+            "message": "Auth must include at least one role.",
+            "path": "auth.roles"
+        })
+        
+    # UI Completeness
+    has_dashboard = False
+    has_data_page = False
+    ui_used_endpoints = set()
+    for p_idx, page in enumerate(ui_pages):
+        page_name = page.get('name', '').lower()
+        if 'home' in page_name or 'dashboard' in page_name or 'index' in page_name:
+            has_dashboard = True
+            
+        components = page.get('components', [])
+        if len(components) < 1:
+            errors.append({
+                "type": "EMPTY_PAGE",
+                "message": f"UI page '{page.get('name')}' must have at least one component.",
+                "path": f"ui.pages[{p_idx}].components"
+            })
+            
+        comp_types = [c.get('type') for c in components]
+        if 'table' in comp_types and 'form' in comp_types:
+            has_data_page = True
+            
+        for c in components:
+            ep_ref = c.get('endpoint_ref')
+            if ep_ref:
+                ui_used_endpoints.add(ep_ref)
+            
+    if len(ui_pages) < 2:
+        errors.append({
+            "type": "MISSING_NAVIGATION",
+            "message": "UI must include multiple pages to support navigation.",
+            "path": "ui.pages"
+        })
+    if not has_dashboard:
+        errors.append({
+            "type": "MISSING_ENTRY_PAGE",
+            "message": "UI must include at least 1 entry page (e.g. dashboard/home).",
+            "path": "ui.pages"
+        })
+    if not has_data_page:
+        errors.append({
+            "type": "MISSING_DATA_PAGE",
+            "message": "UI must include at least 1 data page containing both a table and a form.",
+            "path": "ui.pages"
+        })
+        
+    # Ensure every endpoint is used in UI
+    for ep in api_endpoints:
+        ep_id = ep.get('id')
+        if ep_id and ep_id not in ui_used_endpoints:
+            errors.append({
+                "type": "UNUSED_ENDPOINT",
+                "message": f"API endpoint '{ep_id}' is defined but never used in the UI.",
+                "path": "api.endpoints"
+            })
+
+    # API CRUD Completeness
+    # Ensure there is at least one GET, POST, PUT, DELETE in the system overall
+    all_methods = {ep.get('method', '').upper() for ep in api_endpoints}
+    missing_system_crud = {'GET', 'POST', 'PUT', 'DELETE'} - all_methods
+    if missing_system_crud:
+        errors.append({
+            "type": "INCOMPLETE_SYSTEM_CRUD",
+            "message": f"API is missing basic CRUD capabilities. The system lacks: {missing_system_crud} endpoints.",
+            "path": "api.endpoints"
+        })
+        
+    # Ensure every non-User table has at least one endpoint referencing it
+    for table_name in table_fields.keys():
+        if table_name.lower() == 'user':
+            continue
+        methods_for_table = set()
+        for ep in api_endpoints:
+            if ep.get('related_table') == table_name:
+                methods_for_table.add(ep.get('method', '').upper())
+        
+        if not methods_for_table:
+            errors.append({
+                "type": "ORPHANED_TABLE",
+                "message": f"DB Table '{table_name}' has no API endpoints interacting with it.",
+                "path": "api.endpoints"
+            })
 
     is_valid = len(errors) == 0
     if not is_valid:
