@@ -18,18 +18,7 @@ from logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# ── Score deductions ─────────────────────────────────────────────────────────
-DEDUCTIONS = {
-    "structural":    20,
-    "api_db":        15,
-    "ui_api":        15,
-    "auth":          10,
-    "execution":     20,
-}
 
-# ── Score thresholds ─────────────────────────────────────────────────────────
-THRESHOLD_READY          = 85
-THRESHOLD_READY_WARNINGS = 70
 
 
 def _err(err_type: str, message: str, path: str = "") -> dict:
@@ -471,106 +460,184 @@ def _check_crud_coverage(config: dict, errors: list, warnings: list) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CATEGORY BUDGETS
+# ─────────────────────────────────────────────────────────────────────────────
+CATEGORY_BUDGETS = {
+    "structure":   20,   # Root keys, table/endpoint/page existence
+    "consistency": 25,   # API↔DB field matching, UI↔API binding
+    "execution":   30,   # Simulation dry-runs, form→API→DB chain
+    "coverage":    15,   # CRUD completeness per entity
+    "ux":          10,   # Auth roles, dashboard/home pages, navigation
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # MAIN EVALUATOR
 # ─────────────────────────────────────────────────────────────────────────────
 def evaluate(config: dict) -> dict:
     """
     Pre-Execution Evaluation Engine.
-    Returns { ready, score, errors, warnings, metrics }
+    Scores across 5 categories: structure, consistency, execution, coverage, ux.
+    Returns { ready, score, scores, execution_errors, coverage_pct, errors, warnings, metrics }
     """
     logger.info("Pre-Execution Evaluator starting...")
 
     errors:   list = []
     warnings: list = []
-    score          = 100
 
-    # ── Run all checks ────────────────────────────────────────────────────────
+    # Category deduction accumulators
+    cat_deductions = {k: 0 for k in CATEGORY_BUDGETS}
 
-    # 1. Structural
+    # ── 1. Structural (budget: 20) ─────────────────────────────────────────
     d1 = _check_structural(config, errors, warnings)
-    score -= d1
+    cat_deductions["structure"] += d1
 
-    # If structural is broken, skip deeper checks (config may be None-like)
-    if d1 >= DEDUCTIONS["structural"]:
+    if d1 >= 20:
         logger.error("Structural failure — skipping deeper checks.")
-        return _build_result(score, errors, warnings, config)
+        return _build_result(cat_deductions, errors, warnings, config)
 
-    # 2. Database
+    # ── 2. Database (feeds into consistency) ────────────────────────────────
     d2, table_field_map, pk_map = _check_database(config, errors, warnings)
-    score -= d2
+    cat_deductions["structure"] += d2   # DB structural issues count as structure
 
-    # 3. API ↔ DB
+    # ── 3. API ↔ DB consistency (budget: 25) ────────────────────────────────
     all_endpoints = config.get("api", {}).get("endpoints", [])
     d3, endpoint_ids = _check_api_db(config, table_field_map, pk_map, errors, warnings)
-    score -= d3
+    cat_deductions["consistency"] += d3
 
-    # 4. UI ↔ API
+    # ── 4. UI ↔ API consistency (also consistency) ──────────────────────────
     d4 = _check_ui_api(config, endpoint_ids, table_field_map, errors, warnings, all_endpoints)
-    score -= d4
+    cat_deductions["consistency"] += d4
 
-    # 5. Auth
+    # ── 5. Auth → UX category (budget: 10) ──────────────────────────────────
     d5 = _check_auth(config, endpoint_ids, errors, warnings)
-    score -= d5
+    cat_deductions["ux"] += d5
 
-    # 6. Execution Simulation
+    # ── 6. Execution Simulation (budget: 30) ────────────────────────────────
     d6 = _simulate_execution(config, table_field_map, errors, warnings)
-    score -= d6
+    cat_deductions["execution"] += d6
 
-    # 7. CRUD Coverage
+    # ── 7. CRUD Coverage (budget: 15) ───────────────────────────────────────
     d7 = _check_crud_coverage(config, errors, warnings)
-    score -= d7
+    cat_deductions["coverage"] += d7
 
-    score = max(0, score)
-    logger.info(f"Evaluation complete. Score={score}, Errors={len(errors)}, Warnings={len(warnings)}")
+    # ── UX bonus checks ─────────────────────────────────────────────────────
+    pages = config.get("ui", {}).get("pages", [])
+    routes = [p.get("route", "").lower() for p in pages]
+    has_dashboard = any("dashboard" in r for r in routes)
+    has_home = any(r in ("/", "/home", "home", "") for r in routes)
+    if not has_dashboard:
+        errors.append(_err("EXECUTION_ERROR", "Missing required Dashboard page (route '/dashboard').", "ui.pages"))
+        cat_deductions["ux"] += 5
+    if not has_home:
+        errors.append(_err("EXECUTION_ERROR", "Missing required Home page (route '/' or '/home').", "ui.pages"))
+        cat_deductions["ux"] += 5
 
-    return _build_result(score, errors, warnings, config,
-                         deductions={"structural": d1, "api_db": d3, "ui_api": d4, "auth": d5, "execution": d6, "crud": d7})
+    logger.info(f"Evaluation complete. Category deductions: {cat_deductions}")
+
+    return _build_result(cat_deductions, errors, warnings, config)
 
 
-def _build_result(score: int, errors: list, warnings: list, config: dict,
-                  deductions: dict = None) -> dict:
-    score = max(0, score)
-    
-    execution_error_count = sum(1 for e in errors if e.get("type") in ("EXECUTION_ERROR", "EXECUTION_FAIL"))
+# ─────────────────────────────────────────────────────────────────────────────
+# RESULT BUILDER
+# ─────────────────────────────────────────────────────────────────────────────
+def _build_result(cat_deductions: dict, errors: list, warnings: list, config: dict) -> dict:
+    """
+    Computes per-category scores, total score, coverage %, execution_errors count,
+    and the strict readiness gate.
+    """
+    # ── Per-category scores (clamped to [0, budget]) ────────────────────────
+    scores = {}
+    for cat, budget in CATEGORY_BUDGETS.items():
+        scores[cat] = max(0, budget - cat_deductions.get(cat, 0))
 
-    if score >= THRESHOLD_READY:
-        ready  = True
-        status = "READY"
-    elif score >= THRESHOLD_READY_WARNINGS:
-        ready  = True
-        status = "READY_WITH_WARNINGS"
+    total_score = sum(scores.values())   # out of 100
+
+    # ── Execution errors count ──────────────────────────────────────────────
+    execution_errors = sum(1 for e in errors if e.get("type") in ("EXECUTION_ERROR", "EXECUTION_FAIL"))
+
+    # ── Coverage percentage ─────────────────────────────────────────────────
+    tables = config.get("db", {}).get("tables", []) if config else []
+    endpoints = config.get("api", {}).get("endpoints", []) if config else []
+    pages = config.get("ui", {}).get("pages", []) if config else []
+
+    if tables:
+        covered_count = 0
+        for table in tables:
+            t_name = table.get("name")
+            if not t_name:
+                continue
+
+            # Check API CRUD coverage
+            methods_found = set()
+            for ep in endpoints:
+                if ep.get("related_table") == t_name:
+                    methods_found.add(ep.get("method", "").upper())
+
+            has_crud = {"POST", "GET"}.issubset(methods_found) and \
+                       ({"PUT", "PATCH"} & methods_found) and \
+                       "DELETE" in methods_found
+
+            # Check UI coverage
+            has_form = has_table_comp = has_button = False
+            for page in pages:
+                for comp in page.get("components", []):
+                    ep_ref = comp.get("endpoint_ref")
+                    ep = next((e for e in endpoints if e.get("id") == ep_ref), None)
+                    if ep and ep.get("related_table") == t_name:
+                        ct = comp.get("type", "").lower()
+                        if ct == "form": has_form = True
+                        elif ct == "table": has_table_comp = True
+                        elif ct == "button": has_button = True
+
+            if has_crud and has_form and has_table_comp and has_button:
+                covered_count += 1
+
+        coverage_pct = round((covered_count / len(tables)) * 100)
     else:
-        ready  = False
-        status = "NOT_READY"
-        
-    # Strict Execution Lock
-    if execution_error_count > 0:
-        ready = False
-        status = "NOT_READY_EXECUTION_ERRORS"
-        # Force score down slightly to ensure it's not a deceptive 100
-        score = min(score, 99)
+        coverage_pct = 0
 
-    tables    = config.get("db",  {}).get("tables",    []) if config else []
-    endpoints = config.get("api", {}).get("endpoints",  []) if config else []
-    pages     = config.get("ui",  {}).get("pages",     []) if config else []
-    roles     = config.get("auth",{}).get("roles",     []) if config else []
+    # ── Strict readiness gate ───────────────────────────────────────────────
+    ready = (
+        total_score >= 90 and
+        execution_errors == 0 and
+        coverage_pct == 100
+    )
+
+    if ready:
+        status = "READY"
+    elif total_score >= 70:
+        status = "NOT_READY_PARTIAL"
+    else:
+        status = "NOT_READY"
+
+    # ── Metrics ─────────────────────────────────────────────────────────────
+    roles = config.get("auth", {}).get("roles", []) if config else []
 
     metrics = {
-        "table_count":     len(tables),
-        "endpoint_count":  len(endpoints),
-        "page_count":      len(pages),
-        "role_count":      len(roles),
-        "error_count":     len(errors),
-        "warning_count":   len(warnings),
-        "execution_errors": execution_error_count,
-        "deductions":      deductions or {},
+        "table_count":       len(tables),
+        "endpoint_count":    len(endpoints),
+        "page_count":        len(pages),
+        "role_count":        len(roles),
+        "error_count":       len(errors),
+        "warning_count":     len(warnings),
+        "execution_errors":  execution_errors,
+        "coverage_pct":      coverage_pct,
+        "category_scores":   scores,
+        "category_budgets":  CATEGORY_BUDGETS,
     }
 
+    logger.info(f"Score={total_score}/100 | Exec Errors={execution_errors} | Coverage={coverage_pct}% | Ready={ready}")
+
     return {
-        "ready":    ready,
-        "status":   status,
-        "score":    score,
-        "errors":   errors,
-        "warnings": warnings,
-        "metrics":  metrics,
+        "ready":            ready,
+        "status":           status,
+        "score":            total_score,
+        "scores":           scores,
+        "execution_errors": execution_errors,
+        "coverage_pct":     coverage_pct,
+        "errors":           errors,
+        "warnings":         warnings,
+        "metrics":          metrics,
     }
+

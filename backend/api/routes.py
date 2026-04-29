@@ -6,7 +6,7 @@ from sqlalchemy import MetaData, Table, insert, select, update, delete
 
 from schemas.generate import GenerateRequest
 from logger import setup_logger
-from pipeline.orchestrator import run_pipeline
+from pipeline.orchestrator import run_pipeline, get_evaluation_logs
 from db import get_db
 import models
 
@@ -31,6 +31,12 @@ async def generate_endpoint(request: GenerateRequest):
     except Exception as e:
         logger.error(f"Generation pipeline error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/eval-metrics")
+async def eval_metrics_endpoint():
+    """Return all evaluation logs and a computed summary."""
+    return get_evaluation_logs()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

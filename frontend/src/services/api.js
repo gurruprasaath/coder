@@ -26,6 +26,17 @@ export const generateApp = async (prompt) => {
   }
 };
 
+export const fetchEvalMetrics = async () => {
+  try {
+    const response = await fetch(`${BASE_URL}/eval-metrics`);
+    if (!response.ok) throw new Error(`Failed with status ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error('[API] fetchEvalMetrics error:', error);
+    return null;
+  }
+};
+
 export const callEndpoint = async (config, endpoint_ref, payload = {}, runtimeId = null) => {
   try {
     // 1. Find endpoint in config.api.endpoints where name or id matches endpoint_ref

@@ -13,10 +13,18 @@ class EntitySchema(BaseModel):
     name: str = Field(description="Name of the entity (e.g., User, Task)")
     fields: List[str] = Field(description="List of fields belonging to the entity")
 
+class RequiredModulesSchema(BaseModel):
+    auth: bool = Field(description="Whether authentication/login is required. Assume true if unclear.")
+    dashboard: bool = Field(description="Whether a dashboard/home page is required. Always include if multi-entity.")
+    crud_entities: List[str] = Field(description="List of entities that require full CRUD operations")
+
 class SystemDesignSchema(BaseModel):
     entities: List[EntitySchema] = Field(description="List of database entities derived from the features")
+    relationships: List[str] = Field(description="List of relationships between entities (e.g. User -> Contact (1-to-many))")
     roles: List[str] = Field(description="List of user roles that interact with the system")
-    flows: List[str] = Field(description="High-level user flows or processes")
+    features: List[str] = Field(description="List of extracted features (e.g. authentication, dashboard, analytics)")
+    flows: List[str] = Field(description="High-level user flows or processes (e.g. login -> dashboard -> manage contacts)")
+    required_modules: RequiredModulesSchema = Field(description="Required architectural modules for the system")
 
 # Initialize Groq Client
 try:
@@ -27,8 +35,8 @@ except Exception as e:
 
 def design_system(intent: dict) -> dict:
     """
-    Stage 2: Structured Intent -> System Architecture
-    Calls Groq API to convert extracted intent into system design entities, roles, and flows.
+    Stage 2: Structured Intent -> System Architecture (Planning Layer)
+    Calls Groq API to convert extracted intent into system design entities, roles, features, and flows.
     """
     logger.info(f"design_system called with intent: {json.dumps(intent)}")
     
@@ -37,9 +45,24 @@ def design_system(intent: dict) -> dict:
         raise RuntimeError("Groq client is not initialized.")
 
     instruction = f"""
-    Based on the following application intent, design a system architecture.
-    Extract the necessary entities (with their fields), user roles, and main user flows.
-    Ensure entities relate strictly to the requested features. Do not hallucinate unnecessary fields.
+    You are the Planning Layer of an AI application compiler.
+    Your job is to convert user intent into a COMPLETE and CONSISTENT system plan BEFORE schema generation.
+
+    RULES:
+    1. COMPLETENESS: Identify ALL entities required for the app. For each entity, ensure CRUD is required unless explicitly unnecessary. Include at least one main entry page (dashboard or home).
+    2. AUTH DETECTION: If login, roles, admin, or user mentioned, set auth = true. If unclear, assume auth = true.
+    3. RELATIONSHIPS: Define relationships between entities (e.g. User -> Contact (1-to-many)).
+    4. FEATURE EXTRACTION: Extract features like authentication, dashboard, analytics, payments, role-based access.
+    5. FLOW DEFINITION: Define user flows (e.g. login -> dashboard -> manage contacts).
+    6. CONSISTENCY CHECK: Ensure entities align with features, flows reference entities, and roles are used in flows.
+    7. DO NOT SKIP REQUIRED MODULES: Always include dashboard (if multi-entity app) and CRUD for each entity.
+    
+    IMPORTANT BEHAVIOR:
+    - If something is missing -> ADD it
+    - If unclear -> make reasonable assumptions
+    - DO NOT leave incomplete plan
+    - DO NOT generate schema here, only the structural plan
+
     Return ONLY JSON matching the required schema.
 
     REQUIRED JSON SCHEMA:

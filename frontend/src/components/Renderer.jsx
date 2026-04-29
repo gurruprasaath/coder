@@ -1,146 +1,272 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import FormRenderer from './FormRenderer';
 import TableRenderer from './TableRenderer';
 import ButtonRenderer from './ButtonRenderer';
 import { isEndpointAllowed } from '../utils/auth';
 
+// Derive a smart icon per page based on route/name keywords
+function getPageIcon(page) {
+  const name = (page.name || '').toLowerCase();
+  const route = (page.route || '').toLowerCase();
+  if (name.includes('dashboard') || route.includes('dashboard')) return '📊';
+  if (name.includes('home') || route === '/' || route === '/home') return '🏠';
+  if (name.includes('contact'))  return '👤';
+  if (name.includes('user'))     return '👥';
+  if (name.includes('product'))  return '📦';
+  if (name.includes('order'))    return '🛒';
+  if (name.includes('setting'))  return '⚙️';
+  if (name.includes('report'))   return '📈';
+  if (name.includes('task'))     return '✅';
+  if (name.includes('message') || name.includes('chat'))  return '💬';
+  if (name.includes('login') || name.includes('auth'))    return '🔐';
+  if (name.includes('register') || name.includes('signup')) return '📝';
+  return '📄';
+}
+
 export default function Renderer({ config, currentRole, setCurrentRole, runtimeId }) {
   const [lastAction, setLastAction] = useState('None');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const location = useLocation();
 
   if (!config) {
     return (
-      <div className="placeholder">
-        [ App Preview Placeholder ]<br/>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0f111a', color: '#666', fontSize: '1.2rem' }}>
         No App Generated
       </div>
     );
   }
 
   const allPages = config.ui?.pages || [];
-  
-  // Filter pages based on currentRole OR 'public' (defaulting to public if unspecified)
-  const visiblePages = allPages.filter(page => {
-    const requiredRole = (page.access_role || 'public').toLowerCase();
-    const activeRole = (currentRole || '').toLowerCase();
-    
-    // Page is visible if it explicitly matches the user's role, or if it's designated as public
-    return requiredRole === 'public' || requiredRole === activeRole;
+  const roles = config.auth?.roles || [];
+  const appName = config.ui?.app_name || config.app_name || 'My App';
+
+  const visiblePages = allPages; // Show all pages regardless of role
+
+  // Current page name for the top bar breadcrumb
+  const currentPage = visiblePages.find(p => {
+    const route = p.route?.startsWith('/') ? p.route.slice(1) : p.route;
+    return location.pathname.endsWith(route);
   });
 
   return (
-    <div className="renderer-container" style={{ display: 'flex', minHeight: '100%', position: 'relative', backgroundColor: '#1a1d27', color: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #2a2e3d' }}>
-      
-      {/* Sidebar Navigation */}
-      <aside style={{ width: '250px', backgroundColor: '#121212', borderRight: '1px solid #2a2e3d', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid #2a2e3d' }}>
-          <h2 style={{ fontSize: '1.2rem', margin: 0, color: '#646cff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '1.5rem' }}>⬡</span>
-            Acme Corp App
-          </h2>
+    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#0f111a', color: '#e0e0e0', fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
+
+      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
+      <aside style={{
+        width: sidebarCollapsed ? '68px' : '250px',
+        backgroundColor: '#0d0f15',
+        borderRight: '1px solid #1e212b',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'width 0.25s ease',
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}>
+        {/* App Logo / Brand */}
+        <div style={{
+          padding: sidebarCollapsed ? '20px 0' : '20px',
+          borderBottom: '1px solid #1e212b',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: sidebarCollapsed ? 'center' : 'space-between',
+          minHeight: '68px',
+        }}>
+          {!sidebarCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '8px',
+                background: 'linear-gradient(135deg, #646cff, #a164ff)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1rem', fontWeight: 'bold', color: '#fff', flexShrink: 0
+              }}>
+                {appName.charAt(0).toUpperCase()}
+              </div>
+              <span style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>{appName}</span>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            style={{
+              background: 'none', border: 'none', color: '#666', cursor: 'pointer',
+              fontSize: '1.1rem', padding: '4px', flexShrink: 0
+            }}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? '▸' : '◂'}
+          </button>
         </div>
-        <nav style={{ display: 'flex', flexDirection: 'column', padding: '15px 10px', gap: '5px' }}>
+
+        {/* Navigation Links */}
+        <nav style={{ display: 'flex', flexDirection: 'column', padding: '12px 8px', gap: '2px', flex: 1, overflowY: 'auto' }}>
           {visiblePages.length === 0 ? (
-            <div style={{ color: '#666', fontStyle: 'italic', padding: '10px' }}>No accessible pages</div>
+            !sidebarCollapsed && <div style={{ color: '#444', fontStyle: 'italic', padding: '10px', fontSize: '0.85rem' }}>No accessible pages</div>
           ) : (
             visiblePages.map((page, index) => {
-              // Ensure route has a leading slash
-              const path = page.route?.startsWith('/') ? page.route : `/${page.route}`;
+              const relativeRoute = page.route?.startsWith('/') ? page.route.slice(1) : page.route;
+              const icon = getPageIcon(page);
               return (
                 <NavLink
                   key={index}
-                  to={path}
+                  to={relativeRoute}
                   style={({ isActive }) => ({
-                    padding: '12px 15px',
-                    borderRadius: '6px',
+                    padding: sidebarCollapsed ? '12px 0' : '10px 14px',
+                    borderRadius: '8px',
                     textDecoration: 'none',
-                    color: isActive ? '#fff' : '#a6accd',
-                    backgroundColor: isActive ? '#646cff' : 'transparent',
-                    fontWeight: isActive ? 'bold' : 'normal',
-                    transition: 'all 0.2s ease',
+                    color: isActive ? '#fff' : '#8892b0',
+                    backgroundColor: isActive ? 'rgba(100, 108, 255, 0.15)' : 'transparent',
+                    fontWeight: isActive ? 600 : 400,
+                    fontSize: '0.9rem',
+                    transition: 'all 0.15s ease',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px'
+                    gap: '10px',
+                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                    borderLeft: isActive ? '3px solid #646cff' : '3px solid transparent',
                   })}
+                  title={sidebarCollapsed ? page.name : undefined}
                 >
-                  {({ isActive }) => (
-                    <>
-                      <span style={{ opacity: isActive ? 1 : 0.5 }}>{index % 2 === 0 ? '📄' : '📊'}</span>
-                      {page.name}
-                    </>
-                  )}
+                  <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{icon}</span>
+                  {!sidebarCollapsed && <span>{page.name}</span>}
                 </NavLink>
-              )
+              );
             })
           )}
         </nav>
+
+        {/* Sidebar Footer */}
+        {!sidebarCollapsed && (
+          <div style={{ padding: '15px', borderTop: '1px solid #1e212b', fontSize: '0.75rem', color: '#444' }}>
+            Powered by AI Compiler
+          </div>
+        )}
       </aside>
 
-      {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto' }}>
-        
-        {/* Topbar */}
-        <header style={{ padding: '15px 25px', backgroundColor: '#1e212b', borderBottom: '1px solid #2a2e3d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <label style={{ color: '#a6accd', fontSize: '0.9rem', fontWeight: 'bold' }}>Role Context:</label>
-            <select 
-              value={currentRole} 
-              onChange={(e) => {
-                setCurrentRole(e.target.value);
-                if (runtimeId) localStorage.setItem(`role_${runtimeId}`, e.target.value);
-              }}
-              style={{ padding: '8px 12px', borderRadius: '4px', backgroundColor: '#242936', color: '#fff', border: '1px solid #3b4252', outline: 'none', cursor: 'pointer' }}
-            >
-              <option value="Admin">Admin</option>
-              <option value="User">User</option>
-              <option value="Public">Public</option>
-            </select>
+      {/* ── Main Content Area ────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* ── Top Bar ──────────────────────────────────────────────────────── */}
+        <header style={{
+          padding: '0 28px',
+          height: '56px',
+          backgroundColor: '#12151e',
+          borderBottom: '1px solid #1e212b',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexShrink: 0,
+        }}>
+          {/* Left: Breadcrumb */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
+            <span style={{ color: '#555' }}>{appName}</span>
+            <span style={{ color: '#333' }}>/</span>
+            <span style={{ color: '#a6accd', fontWeight: 600 }}>{currentPage?.name || 'Page'}</span>
           </div>
 
-          <div style={{ fontSize: '0.85rem', color: '#a6accd', fontFamily: 'monospace', backgroundColor: 'rgba(0,0,0,0.3)', padding: '6px 12px', borderRadius: '4px', border: '1px solid #2a2e3d' }}>
-            LAST API: <span style={{ color: '#00ff00' }}>{lastAction}</span>
+          {/* Right: Role + Status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {/* Last API indicator */}
+            <div style={{
+              fontSize: '0.78rem', color: '#555', fontFamily: 'monospace',
+              backgroundColor: 'rgba(0,0,0,0.3)', padding: '4px 10px',
+              borderRadius: '4px', border: '1px solid #1e212b',
+            }}>
+              API: <span style={{ color: lastAction !== 'None' ? '#4caf50' : '#555' }}>{lastAction}</span>
+            </div>
+
+            {/* Role Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '28px', height: '28px', borderRadius: '50%',
+                background: 'linear-gradient(135deg, #646cff, #a164ff)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.75rem', color: '#fff', fontWeight: 700,
+              }}>
+                {(currentRole || 'P').charAt(0).toUpperCase()}
+              </div>
+              <select
+                value={currentRole}
+                onChange={(e) => {
+                  setCurrentRole(e.target.value);
+                  if (runtimeId) localStorage.setItem(`role_${runtimeId}`, e.target.value);
+                }}
+                style={{
+                  padding: '6px 10px', borderRadius: '6px',
+                  backgroundColor: '#1a1d27', color: '#e0e0e0',
+                  border: '1px solid #2a2e3d', outline: 'none',
+                  cursor: 'pointer', fontSize: '0.85rem',
+                }}
+              >
+                {roles.length > 0 ? (
+                  roles.map((role, i) => <option key={i} value={role}>{role}</option>)
+                ) : (
+                  <>
+                    <option value="Admin">Admin</option>
+                    <option value="User">User</option>
+                    <option value="Public">Public</option>
+                  </>
+                )}
+              </select>
+            </div>
           </div>
         </header>
 
-        {/* Page Content Area via Routing */}
-        <main style={{ padding: '30px', flex: 1 }}>
+        {/* ── Page Content ──────────────────────────────────────────────── */}
+        <main style={{ padding: '32px', flex: 1, overflowY: 'auto', backgroundColor: '#0f111a' }}>
           <Routes>
             {visiblePages.map((page, index) => {
               const path = page.route?.startsWith('/') ? page.route : `/${page.route}`;
               return (
                 <Route key={index} path={path} element={
-                  <div className="page-content animation-fade-in">
-                    <h2 style={{ marginBottom: '25px', color: '#fff', fontSize: '1.8rem', borderBottom: '1px solid #2a2e3d', paddingBottom: '15px' }}>
-                      {page.name}
+                  <div className="page-content" style={{ animation: 'fadeIn 0.3s ease' }}>
+                    <h2 style={{
+                      marginBottom: '28px', color: '#fff', fontSize: '1.6rem',
+                      fontWeight: 700, paddingBottom: '14px',
+                      borderBottom: '1px solid #1e212b',
+                      display: 'flex', alignItems: 'center', gap: '12px'
+                    }}>
+                      <span>{getPageIcon(page)}</span> {page.name}
                     </h2>
-                    
-                    <div className="components-list" style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
                       {page.components?.map((comp, cIndex) => {
-                        const isAllowed = isEndpointAllowed(comp.endpoint_ref, currentRole, config.auth?.rules || []);
-                        
-                        if (!isAllowed) {
-                          return (
-                            <div key={cIndex} style={{ padding: '20px', border: '1px dashed #f44336', borderRadius: '8px', backgroundColor: 'rgba(244, 67, 54, 0.05)', color: '#f44336', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div>
-                                <h3 style={{ marginBottom: '5px' }}>{comp.name}</h3>
-                                <span style={{ fontSize: '0.85rem', opacity: 0.8 }}>Access Denied: You do not have permission to view this component.</span>
-                              </div>
-                              <span style={{ fontSize: '1.5rem', opacity: 0.8 }}>🔒</span>
-                            </div>
-                          );
+                        const epRef = comp.endpoint_ref;
+                        const allEndpoints = config.api?.endpoints || [];
+                        const endpointExists = epRef && allEndpoints.some(ep => ep.id === epRef || ep.name === epRef);
+
+                        let warningBadge = null;
+                        if (!endpointExists) {
+                          warningBadge = <span style={{ marginLeft: '10px', fontSize: '0.75rem', backgroundColor: '#ff9800', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>⚠️ Missing Endpoint</span>;
+                        } else if (!isAllowed) {
+                          warningBadge = <span style={{ marginLeft: '10px', fontSize: '0.75rem', backgroundColor: '#f44336', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>🔒 Access Denied</span>;
                         }
 
                         if (comp.type === 'form') {
-                          return <FormRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onRoleChange={setCurrentRole} onAction={setLastAction} />;
+                          return (
+                            <div key={cIndex} style={{ position: 'relative' }}>
+                              {warningBadge && <div style={{ position: 'absolute', top: '-10px', right: '10px', zIndex: 10 }}>{warningBadge}</div>}
+                              <FormRenderer component={comp} config={config} runtimeId={runtimeId} onRoleChange={setCurrentRole} onAction={setLastAction} />
+                            </div>
+                          );
                         }
                         if (comp.type === 'table') {
-                          return <TableRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onAction={setLastAction} />;
+                          return (
+                            <div key={cIndex} style={{ position: 'relative' }}>
+                              {warningBadge && <div style={{ position: 'absolute', top: '-10px', right: '10px', zIndex: 10 }}>{warningBadge}</div>}
+                              <TableRenderer component={comp} config={config} runtimeId={runtimeId} onAction={setLastAction} />
+                            </div>
+                          );
                         }
                         if (comp.type === 'button') {
-                          return <ButtonRenderer key={cIndex} component={comp} config={config} runtimeId={runtimeId} onAction={setLastAction} />;
+                          return (
+                            <div key={cIndex} style={{ position: 'relative', display: 'inline-block' }}>
+                              {warningBadge && <div style={{ position: 'absolute', top: '-20px', left: '0', whiteSpace: 'nowrap' }}>{warningBadge}</div>}
+                              <ButtonRenderer component={comp} config={config} runtimeId={runtimeId} onAction={setLastAction} />
+                            </div>
+                          );
                         }
                         return (
-                          <div key={cIndex} style={{ padding: '10px', border: '1px dashed #444', margin: '10px 0', borderRadius: '4px', backgroundColor: '#242936' }}>
+                          <div key={cIndex} style={{ padding: '12px', border: '1px dashed #333', borderRadius: '8px', backgroundColor: '#151821' }}>
                             <strong>{comp.type}:</strong> {comp.name}
                           </div>
                         );
@@ -148,13 +274,12 @@ export default function Renderer({ config, currentRole, setCurrentRole, runtimeI
                     </div>
                   </div>
                 } />
-              )
+              );
             })}
-            
-            {/* Fallback route - automatically redirect to the first available page if route is not found */}
+
             {visiblePages.length > 0 && (
               <Route path="*" element={
-                <Navigate to={visiblePages[0].route?.startsWith('/') ? visiblePages[0].route : `/${visiblePages[0].route}`} replace />
+                <Navigate to={visiblePages[0].route?.startsWith('/') ? visiblePages[0].route.slice(1) : visiblePages[0].route} replace />
               } />
             )}
           </Routes>

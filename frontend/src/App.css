@@ -374,3 +374,22 @@ body {
   font-size: 0.88rem;
   font-style: italic;
 }
+
+/* ── Compiler Pipeline Animations ─────────────────────────── */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(1.15); }
+}
+
+@keyframes typingBlink {
+  0%   { opacity: 0.2; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.2; }
+}
+
+.typing-dots {
+  display: inline-block;
+  animation: typingBlink 1.4s ease-in-out infinite;
+  font-weight: bold;
+}

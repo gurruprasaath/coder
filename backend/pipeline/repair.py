@@ -87,21 +87,28 @@ def repair_schema(config: dict, errors: list) -> dict:
             strategy_hints += "   - For Auth: Ensure 'roles' array is populated and all 'access_role' or 'role' fields reference an existing role.\n"
             
         instruction = f"""
-        You are an elite, highly analytical AI software architect repairing a broken JSON configuration.
-        The '{section}' section of the system architecture has failed strict Zero-Tolerance validation.
-        
-        YOUR GOAL: Fix the '{section}' schema to resolve the following specific errors.
-        You MUST fix the root cause. If an endpoint is missing, create it. If a field is mismatched, rename it.
+        You are the Repair Engine of an AI application compiler.
+        Your job is to FIX ONLY the broken parts of the '{section}' schema based on validation errors.
+
+        RULES (STRICT):
+        1. DO NOT REGENERATE EVERYTHING: Fix ONLY the specific broken section ('{section}').
+        2. PRESERVE EXISTING STRUCTURE: Do NOT modify parts that are already valid. Keep naming consistent. Keep relationships intact. If a part already exists and is valid -> DO NOT TOUCH IT.
+        3. ERROR-DRIVEN FIXING: For each error:
+           - Missing endpoint -> add ONLY that endpoint
+           - UI field not in API -> update API OR adjust UI (minimal change)
+           - API field not in DB -> update DB schema ONLY
+           - Missing CRUD -> add only missing operations
+        4. NO OVER-ENGINEERING: Do NOT add new features. Do NOT redesign system. Do NOT change working logic.
+        5. MINIMAL PATCH OUTPUT: Return only the corrected section and a list of changes made.
         
         {strategy_hints}
         
         Make sure the fixed '{section}' perfectly aligns with the rest of the configuration below.
-        Do not modify anything else. 
         
         CRITICAL OUTPUT FORMAT:
         Your response MUST be a single JSON object with EXACTLY TWO keys:
-        1. "_thought_process": A string where you step-by-step analyze each reported error, brainstorm the best way to solve it, and plan the exact JSON modifications.
-        2. "repaired_section": The actual valid repaired JSON object for the '{section}'.
+        1. "changes": A list of strings describing the exact minimal changes you made to fix the errors.
+        2. "fixed_section": The actual valid repaired JSON object for the '{section}'.
         
         CRITICAL CONSTRAINTS:
         1. API request_body and response_body field names MUST exactly match DB table fields.
@@ -126,7 +133,7 @@ def repair_schema(config: dict, errors: list) -> dict:
         20. FUNCTIONAL: 'form' MUST perfectly match API request_body fields. 'table' MUST map to a GET endpoint returning an array.
         21. FUNCTIONAL: 'button' MUST map to an action (e.g. DELETE or parameter-less POST). Buttons have NO input fields. If inputs are needed, use a 'form'.
 
-        REQUIRED JSON SCHEMA:
+        REQUIRED JSON SCHEMA FOR fixed_section:
         {json.dumps(schema_model.model_json_schema(), indent=2)}
 
         Reported Errors to fix (READ CAREFULLY AND FIX ALL OF THEM):
@@ -156,11 +163,16 @@ def repair_schema(config: dict, errors: list) -> dict:
                 
                 result_json = json.loads(response.choices[0].message.content)
                 
-                logger.info(f"AI Thought Process for '{section}':\n{result_json.get('_thought_process', 'No thought process provided.')}")
+                # Check for early exit if no errors
+                if result_json.get("status") == "no_fix_needed":
+                    logger.info(f"LLM reported no fixes needed for '{section}'.")
+                    return repaired_config
                 
-                fixed_section = result_json.get("repaired_section")
+                logger.info(f"AI Changes for '{section}':\n{json.dumps(result_json.get('changes', []), indent=2)}")
+                
+                fixed_section = result_json.get("fixed_section")
                 if not fixed_section:
-                    raise ValueError("The LLM did not return the 'repaired_section' key in the JSON.")
+                    raise ValueError("The LLM did not return the 'fixed_section' key in the JSON.")
                 
                 # Self-Verification: Validate against Pydantic schema
                 try:
