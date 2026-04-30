@@ -1,4 +1,6 @@
-const BASE_URL = "http://localhost:8000";
+// Keep backend port in one place.
+// Backend is FastAPI (uvicorn) and by default we run it on :8000.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export const generateApp = async (prompt) => {
   console.log(`[API] generateApp called with prompt: "${prompt}"`);

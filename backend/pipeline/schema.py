@@ -161,6 +161,7 @@ def generate_schema(design: dict) -> dict:
     5. LOGIC: `GET` and `DELETE` endpoints MUST have an empty `request_body`.
     6. LOGIC: Any login endpoint MUST be `POST` and MUST include `password` in `request_body`.
     7. LOGIC: Every `DELETE` endpoint MUST have exactly one field in `response_body`: {{ "name": "success", "type": "boolean", "required": true }}.
+       IMPORTANT: `success` is a computed response field and MUST NOT be added to the DB schema.
 
     Return ONLY JSON matching the required schema with NO missing keys.
 

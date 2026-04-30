@@ -122,6 +122,7 @@ def repair_schema(config: dict, errors: list) -> dict:
         9. LOGIC: If a DB entity logically belongs to another, add a `foreign_key` like "TableName.fieldName".
         10. LOGIC: Every DB table MUST have at least one field with `is_primary: true`.
         11. LOGIC: Every `DELETE` endpoint MUST have exactly one field in `response_body`: {{ "name": "success", "type": "boolean", "required": true }}.
+            IMPORTANT: `success` is a computed response field and MUST NOT be added to the DB schema.
         12. LOGIC: Add validation metadata (min_length, max_length, format) to DB and API fields where appropriate.
         13. COMPLETENESS: UI must include a 'Dashboard' page (route '/dashboard') and a 'Home' page (route '/home' or '/').
         14. COMPLETENESS: UI must include navigation (multiple pages).

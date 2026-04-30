@@ -71,8 +71,12 @@ def validate_schema(config: dict) -> dict:
                         })
 
     # 2. API Cross-Layer Checks
+    # Note: Most endpoints should only expose fields that exist on their related DB table.
+    # One exception is DELETE semantics: we require a boolean `success` response which is not
+    # a persisted column. Treat that as a computed field.
     for idx, ep in enumerate(api_endpoints):
         ep_id = ep.get('id', f'unknown_{idx}')
+        method = (ep.get('method') or '').upper()
         related_table = ep.get('related_table')
         
         if related_table not in table_fields:
@@ -96,6 +100,9 @@ def validate_schema(config: dict) -> dict:
                 
         for f_idx, field_obj in enumerate(ep.get('response_body', [])):
             field_name = field_obj.get('name')
+            # Allow computed response fields for specific semantics.
+            if method == 'DELETE' and field_name == 'success':
+                continue
             if field_name not in valid_fields:
                 errors.append({
                     "type": "INVALID_RESPONSE_FIELD",
@@ -107,7 +114,9 @@ def validate_schema(config: dict) -> dict:
     for p_idx, page in enumerate(ui_pages):
         page_name = page.get('name', 'unknown')
         access_role = page.get('access_role')
-        if access_role and access_role not in auth_roles:
+        # Role checks should be case-insensitive to avoid churn across stages.
+        auth_roles_lc = {str(r).lower() for r in auth_roles}
+        if access_role and str(access_role).lower() not in auth_roles_lc:
             errors.append({
                 "type": "INVALID_PAGE_ACCESS_ROLE",
                 "message": f"UI page '{page_name}' requires role '{access_role}' which does not exist.",

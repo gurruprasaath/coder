@@ -233,6 +233,9 @@ export default function Renderer({ config, currentRole, setCurrentRole, runtimeI
                         const epRef = comp.endpoint_ref;
                         const allEndpoints = config.api?.endpoints || [];
                         const endpointExists = epRef && allEndpoints.some(ep => ep.id === epRef || ep.name === epRef);
+                        const isAllowed = !epRef
+                          ? true
+                          : isEndpointAllowed(epRef, currentRole, config.auth?.rules || []);
 
                         let warningBadge = null;
                         if (!endpointExists) {
