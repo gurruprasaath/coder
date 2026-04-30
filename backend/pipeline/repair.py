@@ -3,8 +3,8 @@ import json
 import copy
 import logging
 from groq import Groq
-from logger import setup_logger
-from pipeline.schema import UIConfig, APIConfig, DBConfig, AuthConfig
+from backend.logger import setup_logger
+from backend.pipeline.schema import UIConfig, APIConfig, DBConfig, AuthConfig
 
 logger = setup_logger(__name__)
 

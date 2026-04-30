@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: coder-backend
+    runtime: python
+    plan: free
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.3
+      - key: WEB_CONCURRENCY
+        value: 1
+      # Set this in Render Dashboard or here if you prefer IaC.
+      # - key: GROQ_API_KEY
+      #   sync: false

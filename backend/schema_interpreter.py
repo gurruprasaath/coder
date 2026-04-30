@@ -1,6 +1,6 @@
-from db import engine
+from backend.db import engine
 from sqlalchemy import text
-from logger import setup_logger
+from backend.logger import setup_logger
 
 logger = setup_logger(__name__)
 

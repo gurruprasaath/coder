@@ -1,0 +1,16 @@
+.vercel
+# Python
+__pycache__/
+*.py[cod]
+
+# Node
+node_modules/
+
+# Vercel
+.vercel/
+
+# Build output
+frontend/dist/
+
+# Local DB
+app.db

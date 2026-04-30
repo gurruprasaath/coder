@@ -4,11 +4,11 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import MetaData, Table, insert, select, update, delete
 
-from schemas.generate import GenerateRequest
-from logger import setup_logger
-from pipeline.orchestrator import run_pipeline, get_evaluation_logs
-from db import get_db
-import models
+from backend.schemas.generate import GenerateRequest
+from backend.logger import setup_logger
+from backend.pipeline.orchestrator import run_pipeline, get_evaluation_logs
+from backend.db import get_db
+from backend import models
 
 logger = setup_logger(__name__)
 router = APIRouter()

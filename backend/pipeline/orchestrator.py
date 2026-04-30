@@ -2,13 +2,13 @@ import time
 import json
 import hashlib
 import datetime
-from logger import setup_logger
-from pipeline.intent import extract_intent
-from pipeline.design import design_system
-from pipeline.schema import generate_schema
-from pipeline.validator import validate_schema
-from pipeline.repair import repair_schema
-from pipeline.evaluator import evaluate
+from backend.logger import setup_logger
+from backend.pipeline.intent import extract_intent
+from backend.pipeline.design import design_system
+from backend.pipeline.schema import generate_schema
+from backend.pipeline.validator import validate_schema
+from backend.pipeline.repair import repair_schema
+from backend.pipeline.evaluator import evaluate
 
 logger = setup_logger(__name__)
 

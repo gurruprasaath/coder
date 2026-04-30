@@ -1,7 +1,7 @@
 import json
 import time
 from dotenv import load_dotenv
-from pipeline.orchestrator import run_pipeline
+from backend.pipeline.orchestrator import run_pipeline
 
 load_dotenv()
 

@@ -5,7 +5,7 @@ from typing import List
 from pydantic import BaseModel, Field
 from groq import Groq
 
-from logger import setup_logger
+from backend.logger import setup_logger
 
 logger = setup_logger(__name__)
 

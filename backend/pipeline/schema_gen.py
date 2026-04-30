@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 
-from logger import setup_logger
+from backend.logger import setup_logger
 
 logger = setup_logger(__name__)
 
