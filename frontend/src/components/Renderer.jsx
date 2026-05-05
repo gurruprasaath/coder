@@ -108,7 +108,7 @@ export default function Renderer({ config, currentRole, setCurrentRole, runtimeI
               return (
                 <NavLink
                   key={index}
-                  to={relativeRoute}
+                  to={`/app/${relativeRoute}`}
                   style={({ isActive }) => ({
                     padding: sidebarCollapsed ? '12px 0' : '10px 14px',
                     borderRadius: '8px',
@@ -215,9 +215,9 @@ export default function Renderer({ config, currentRole, setCurrentRole, runtimeI
         <main style={{ padding: '32px', flex: 1, overflowY: 'auto', backgroundColor: '#0f111a' }}>
           <Routes>
             {visiblePages.map((page, index) => {
-              const path = page.route?.startsWith('/') ? page.route : `/${page.route}`;
+              const relativeRoute = page.route?.startsWith('/') ? page.route.slice(1) : page.route;
               return (
-                <Route key={index} path={path} element={
+                <Route key={index} path={relativeRoute} element={
                   <div className="page-content" style={{ animation: 'fadeIn 0.3s ease' }}>
                     <h2 style={{
                       marginBottom: '28px', color: '#fff', fontSize: '1.6rem',
@@ -282,7 +282,7 @@ export default function Renderer({ config, currentRole, setCurrentRole, runtimeI
 
             {visiblePages.length > 0 && (
               <Route path="*" element={
-                <Navigate to={visiblePages[0].route?.startsWith('/') ? visiblePages[0].route.slice(1) : visiblePages[0].route} replace />
+                <Navigate to={`/app/${visiblePages[0].route?.startsWith('/') ? visiblePages[0].route.slice(1) : visiblePages[0].route}`} replace />
               } />
             )}
           </Routes>
