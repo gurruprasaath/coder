@@ -2,7 +2,7 @@
 // Local dev: set VITE_API_BASE_URL=http://localhost:8000
 // Production: set VITE_API_BASE_URL to your Render backend URL.
 // Example: https://<your-service>.onrender.com
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://coder-backend-tmyd.onrender.com";
 
 export const generateApp = async (prompt) => {
   console.log(`[API] generateApp called with prompt: "${prompt}"`);
